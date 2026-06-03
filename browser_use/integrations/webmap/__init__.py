@@ -21,6 +21,7 @@ Usage:
 """
 
 from .actions import register_webmap_actions
+from .auth_session import AuthCaptureSession, AuthScanSession
 from .service import (
     WebmapExtractor,
     WebmapResult,
@@ -31,6 +32,8 @@ from .service import (
 )
 
 __all__ = [
+    'AuthCaptureSession',
+    'AuthScanSession',
     'WebmapExtractor',
     'WebmapResult',
     'register_webmap_actions',

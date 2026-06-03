@@ -40,6 +40,30 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# ARIA roles considered "interactive" for AX-tree fallback enrichment.
+# Kept tight on purpose — generic roles like "group" or "region" produce noise.
+INTERACTIVE_AX_ROLES: frozenset[str] = frozenset(
+    {
+        "button",
+        "link",
+        "textbox",
+        "searchbox",
+        "combobox",
+        "listbox",
+        "checkbox",
+        "radio",
+        "switch",
+        "slider",
+        "spinbutton",
+        "menuitem",
+        "menuitemcheckbox",
+        "menuitemradio",
+        "tab",
+        "option",
+    }
+)
+
+
 @dataclass
 class WebmapResult:
     """Result from a webmap scan."""
@@ -76,6 +100,15 @@ class WebmapResult:
 
     page_purpose: str = ""
     """Inferred page purpose."""
+
+    ax_interactives: list[dict] = field(default_factory=list)
+    """AX tree fallback: list of {role, name, selector_hint} for interactive nodes.
+
+    Populated only when webmap returned 0 interactives AND the page actually has
+    accessible interactive elements (typical for SPAs mid-hydration)."""
+
+    enriched_via_ax_tree: bool = False
+    """True if ax_interactives was populated as a fallback."""
 
     @classmethod
     def from_agent_format(cls, raw: str, url: str) -> "WebmapResult":
@@ -193,8 +226,17 @@ class WebmapExtractor:
         self._cache: dict[str, WebmapResult] = {}
 
     def _find_webmap(self) -> str | None:
-        """Find webmap CLI in common locations."""
-        # Check for npx/pnpx
+        """
+        Find webmap CLI in common locations.
+
+        Order matters: a direct `webmap` on PATH (bash wrapper or installed
+        global) is faster + more deterministic than `npx`, which falls back to
+        a registry lookup when the package isn't linked locally (and breaks
+        offline / private-package setups).
+        """
+        direct = shutil.which("webmap")
+        if direct:
+            return direct
         if shutil.which("npx"):
             return "npx"
         if shutil.which("pnpx"):
@@ -263,7 +305,23 @@ class WebmapExtractor:
             return await self.scan(url, format=format)
 
         # Use stdin mode - pass HTML directly to webmap
-        return await self.scan_html(html, url, format=format)
+        result = await self.scan_html(html, url, format=format)
+
+        # AX tree fallback: SPAs often render hydration shell with 0 webmap
+        # interactives even though the AX tree exposes real buttons/links/inputs.
+        # Enrich result from CDP Accessibility.getFullAXTree when this happens.
+        if result.interactive_count == 0 and not result.raw.startswith("Error:"):
+            ax_nodes = await self._get_ax_interactives(browser_session)
+            if ax_nodes:
+                result.ax_interactives = ax_nodes
+                result.interactive_count = len(ax_nodes)
+                result.enriched_via_ax_tree = True
+                logger.info(
+                    f"🦾 AX tree fallback enriched result: {len(ax_nodes)} interactives "
+                    f"recovered for {url}"
+                )
+
+        return result
 
     async def scan_html(
         self,
@@ -441,6 +499,56 @@ class WebmapExtractor:
         except Exception as e:
             logger.warning(f"Failed to get page content: {e}")
         return None
+
+    async def _get_ax_interactives(
+        self, browser_session: "BrowserSession"
+    ) -> list[dict]:
+        """
+        Fetch interactive nodes from the AX (accessibility) tree via CDP.
+
+        Used as a fallback when webmap's HTML-based scan returns 0 interactives —
+        typical for SPAs where the visible page is rendered via portals, shadow
+        DOM, or post-hydration React subtrees that the static outerHTML misses
+        but the browser's accessibility tree exposes.
+
+        Returns a list of {role, name, node_id} dicts for nodes whose role is
+        in INTERACTIVE_AX_ROLES. Returns [] on failure (never raises).
+        """
+        try:
+            cdp_session = await browser_session.get_or_create_cdp_session(
+                target_id=None, focus=False
+            )
+            if not cdp_session:
+                return []
+            await cdp_session.cdp_client.send.Accessibility.enable(
+                session_id=cdp_session.session_id,
+            )
+            tree = await cdp_session.cdp_client.send.Accessibility.getFullAXTree(
+                params={},
+                session_id=cdp_session.session_id,
+            )
+            nodes = tree.get("nodes", []) if tree else []
+            out: list[dict] = []
+            for node in nodes:
+                role_obj = node.get("role") or {}
+                role = role_obj.get("value") if isinstance(role_obj, dict) else None
+                if role not in INTERACTIVE_AX_ROLES:
+                    continue
+                if node.get("ignored"):
+                    continue
+                name_obj = node.get("name") or {}
+                name = name_obj.get("value") if isinstance(name_obj, dict) else None
+                out.append(
+                    {
+                        "role": role,
+                        "name": (name or "").strip(),
+                        "node_id": node.get("nodeId") or node.get("backendDOMNodeId"),
+                    }
+                )
+            return out
+        except Exception as e:
+            logger.warning(f"AX tree fallback failed: {e}")
+            return []
 
     def clear_cache(self):
         """Clear the result cache."""

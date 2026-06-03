@@ -1,0 +1,17 @@
+{
+  "name": "browser-use (bentheautomator fork)",
+  "description": "Downstream fork of browser-use extending with webmap integration, AuthCapture/AuthScan ergonomics, and automated-QA application layer",
+  "language": "Python",
+  "framework": "browser-use / asyncio / pydantic v2",
+  "owner": "browser-use-owner",
+  "reviewer": "python-specialist",
+  "ownership": {
+    "persona_type": "local"
+  },
+  "identities": {
+    "profile": "bentheautomator-personal"
+  },
+  "stack": {
+    "services": []
+  }
+}

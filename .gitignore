@@ -83,7 +83,13 @@ product_extraction.py
 *report.md
 plot.py
 
-.claude/
+.claude/*
+!.claude/project.json
+!.claude/handoff.md
+!.claude/agents/
+!.claude/rules/
+.claude/worktrees/
+.claude/scheduled_tasks.lock
 .gitguard/
 
 # Codemap cache (auto-generated)

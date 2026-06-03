@@ -21,12 +21,21 @@ Usage:
 """
 
 from .actions import register_webmap_actions
-from .service import WebmapExtractor, WebmapResult, webmap_context, webmap_scan
+from .service import (
+    WebmapExtractor,
+    WebmapResult,
+    webmap_context,
+    webmap_context_html,
+    webmap_scan,
+    webmap_scan_html,
+)
 
 __all__ = [
     'WebmapExtractor',
     'WebmapResult',
     'register_webmap_actions',
     'webmap_scan',
+    'webmap_scan_html',
     'webmap_context',
+    'webmap_context_html',
 ]

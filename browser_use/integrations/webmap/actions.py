@@ -33,6 +33,21 @@ class WebmapScanParams(BaseModel):
     )
 
 
+class WebmapScanHtmlParams(BaseModel):
+    """Parameters for scanning HTML content directly (shared browser mode)"""
+
+    html: str = Field(
+        description='HTML content to scan',
+    )
+    url: str = Field(
+        description='Base URL for resolving relative links',
+    )
+    format: str = Field(
+        default='agent',
+        description='Output format: agent (compact), json (structured), markdown (readable)',
+    )
+
+
 class WebmapDiffParams(BaseModel):
     """Parameters for detecting page changes"""
 
@@ -119,6 +134,73 @@ def register_webmap_actions(
             return ActionResult(
                 error=f'Webmap scan error: {str(e)}',
                 long_term_memory=f'webmap_scan failed: {str(e)}',
+            )
+
+    @tools.registry.action(
+        description=(
+            'Scan HTML content with webmap to understand its semantic structure. '
+            'This is the PREFERRED method when you have the current page content - '
+            'it avoids spawning a separate browser by reusing your existing page. '
+            'First get the page HTML, then pass it to this action. '
+            'Returns page type, interactive elements (buttons, links, forms), '
+            'navigation structure, and keywords.'
+        ),
+        param_model=WebmapScanHtmlParams,
+    )
+    async def webmap_scan_html(params: WebmapScanHtmlParams) -> ActionResult:
+        """Scan HTML content to understand structure (shared browser mode)."""
+        try:
+            if _webmap_extractor is None:
+                raise RuntimeError('Webmap extractor not initialized')
+
+            if not params.html:
+                return ActionResult(
+                    extracted_content='Error: HTML content is required',
+                    long_term_memory='webmap_scan_html called without HTML',
+                )
+
+            if not params.url:
+                return ActionResult(
+                    extracted_content='Error: URL is required for relative link resolution',
+                    long_term_memory='webmap_scan_html called without URL',
+                )
+
+            logger.info(f'🗺️ Scanning HTML with webmap (shared browser mode): {params.url}')
+            result = await _webmap_extractor.scan_html(params.html, params.url, format=params.format)
+
+            if result.raw.startswith('Error:'):
+                return ActionResult(
+                    extracted_content=result.raw,
+                    long_term_memory=f'webmap scan_html failed for {params.url}',
+                )
+
+            # Format the context for the agent
+            context = result.to_prompt_context()
+
+            # Build a detailed summary for long-term memory
+            memory_parts = [f'Scanned {params.url} (shared browser)']
+            if result.page_type:
+                memory_parts.append(f'type={result.page_type}')
+            if result.interactive_count:
+                memory_parts.append(f'{result.interactive_count} interactive elements')
+            if result.buttons:
+                memory_parts.append(f'buttons: {", ".join(result.buttons[:5])}')
+            if result.forms:
+                memory_parts.append(f'{result.forms} forms')
+
+            logger.info(f'🗺️ Webmap scan_html complete: {result.page_type}, {result.interactive_count} elements')
+
+            return ActionResult(
+                extracted_content=context,
+                include_extracted_content_only_once=True,
+                long_term_memory=' | '.join(memory_parts),
+            )
+
+        except Exception as e:
+            logger.error(f'Error in webmap scan_html: {e}')
+            return ActionResult(
+                error=f'Webmap scan_html error: {str(e)}',
+                long_term_memory=f'webmap_scan_html failed: {str(e)}',
             )
 
     @tools.registry.action(

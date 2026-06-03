@@ -23,22 +23,22 @@ Usage:
 from .actions import register_webmap_actions
 from .auth_session import AuthCaptureSession, AuthScanSession
 from .service import (
-    WebmapExtractor,
-    WebmapResult,
-    webmap_context,
-    webmap_context_html,
-    webmap_scan,
-    webmap_scan_html,
+	WebmapExtractor,
+	WebmapResult,
+	webmap_context,
+	webmap_context_html,
+	webmap_scan,
+	webmap_scan_html,
 )
 
 __all__ = [
-    'AuthCaptureSession',
-    'AuthScanSession',
-    'WebmapExtractor',
-    'WebmapResult',
-    'register_webmap_actions',
-    'webmap_scan',
-    'webmap_scan_html',
-    'webmap_context',
-    'webmap_context_html',
+	'AuthCaptureSession',
+	'AuthScanSession',
+	'WebmapExtractor',
+	'WebmapResult',
+	'register_webmap_actions',
+	'webmap_scan',
+	'webmap_scan_html',
+	'webmap_context',
+	'webmap_context_html',
 ]

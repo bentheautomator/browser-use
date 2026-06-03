@@ -49,7 +49,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 from browser_use.integrations.webmap import AuthScanSession
-from browser_use.qa import _probes, categories, report, sitemap
+from browser_use.qa import _probes, auth, categories, report, sitemap
 from browser_use.qa.scanner import scan_pages as scan_pages_impl
 
 if TYPE_CHECKING:
@@ -91,6 +91,152 @@ class QAPipeline:
 
 	def _seed_urls(self) -> list[str]:
 		return [self.base_url + p if not p.startswith('http') else p for p in self.target_paths]
+
+	# ------------------------------------------------------------------
+	# Convenience constructors — point the pipeline at an app with
+	# minimal configuration. Each `from_*` writes (or expects) a
+	# storage_state JSON for the underlying `AuthScanSession`.
+	# ------------------------------------------------------------------
+
+	@classmethod
+	def from_url(
+		cls,
+		url: str,
+		*,
+		auth_path: Path | str | None = None,
+		report_dir: Path | str | None = None,
+		target_paths: list[str] | None = None,
+		target_label: str | None = None,
+	) -> QAPipeline:
+		"""Construct a pipeline from a single URL.
+
+		Splits `url` into origin + path; the origin becomes `base_url` and
+		(if a path was provided) `target_paths` defaults to `[path]`
+		unless an explicit list is passed. When `target_paths` ends up
+		empty, `run()` discovers routes via the sitemap crawl.
+
+		`auth_path` defaults to `tmp/qa-auth.json`. The file must already
+		exist — use `from_cookies` / `from_form_login` / `from_bearer` /
+		`AuthCaptureSession` to create it first.
+		"""
+		parsed = urlparse(url)
+		base_url = f'{parsed.scheme}://{parsed.netloc}'
+		paths: list[str] = list(target_paths) if target_paths is not None else []
+		if not paths and parsed.path and parsed.path != '/':
+			paths = [parsed.path]
+		storage = Path(auth_path) if auth_path is not None else Path('tmp/qa-auth.json')
+		out_dir = Path(report_dir) if report_dir is not None else Path('qa-out')
+		return cls(
+			base_url=base_url,
+			storage_state_path=storage,
+			target_paths=paths,
+			report_dir=out_dir,
+			target_label=target_label or base_url,
+		)
+
+	@classmethod
+	def from_cookies(
+		cls,
+		base_url: str,
+		cookies: dict[str, str],
+		*,
+		auth_path: Path | str | None = None,
+		report_dir: Path | str | None = None,
+		target_paths: list[str] | None = None,
+		target_label: str | None = None,
+		**cookie_attrs,
+	) -> QAPipeline:
+		"""Inject session cookies directly — skip the UI login.
+
+		Good for CI: fetch a service-account token from a secret manager
+		and pass it as `cookies={'session': '...'}`. Extra cookie
+		attributes (`domain`, `secure`, `http_only`, `same_site`) flow
+		through to `auth.write_storage_from_cookies`.
+		"""
+		storage = Path(auth_path) if auth_path is not None else Path('tmp/qa-auth.json')
+		auth.write_storage_from_cookies(storage, base_url, cookies, **cookie_attrs)
+		return cls.from_url(
+			base_url,
+			auth_path=storage,
+			report_dir=report_dir,
+			target_paths=target_paths,
+			target_label=target_label,
+		)
+
+	@classmethod
+	def from_bearer(
+		cls,
+		base_url: str,
+		bearer: str,
+		*,
+		storage_keys: list[str] | None = None,
+		auth_path: Path | str | None = None,
+		report_dir: Path | str | None = None,
+		target_paths: list[str] | None = None,
+		target_label: str | None = None,
+	) -> QAPipeline:
+		"""Stash a bearer token in localStorage under the SPA's expected keys.
+
+		Most React/Vue/Angular SPAs read their bearer from
+		`localStorage` — typical names: `auth_token`, `accessToken`,
+		`id_token`, `jwt`. Pass `storage_keys` matching what your SPA
+		reads (defaults cover the common four).
+
+		Note: if your app sends bearer via an `Authorization` header on
+		every fetch and does NOT read from localStorage, use
+		`from_cookies` with the equivalent session cookie instead.
+		"""
+		keys = storage_keys or ['auth_token', 'accessToken', 'id_token', 'jwt']
+		storage = Path(auth_path) if auth_path is not None else Path('tmp/qa-auth.json')
+		auth.write_storage_from_localstorage(
+			storage,
+			base_url,
+			local_storage={k: bearer for k in keys},
+		)
+		return cls.from_url(
+			base_url,
+			auth_path=storage,
+			report_dir=report_dir,
+			target_paths=target_paths,
+			target_label=target_label,
+		)
+
+	@classmethod
+	async def from_form_login(
+		cls,
+		base_url: str,
+		*,
+		login_url: str | None = None,
+		fields: dict[str, str],
+		submit_selector: str = 'button[type=submit]',
+		wait_after_submit_sec: float = 4.0,
+		headless: bool = True,
+		auth_path: Path | str | None = None,
+		report_dir: Path | str | None = None,
+		target_paths: list[str] | None = None,
+		target_label: str | None = None,
+	) -> QAPipeline:
+		"""Script a traditional email+password form login.
+
+		`fields` maps CSS selectors to values, e.g.
+		`{'#email': 'qa@x.com', '#password': os.environ['QA_PW']}`.
+		"""
+		storage = Path(auth_path) if auth_path is not None else Path('tmp/qa-auth.json')
+		await auth.capture_via_form_login(
+			storage,
+			login_url=login_url or base_url.rstrip('/') + '/login',
+			fields=fields,
+			submit_selector=submit_selector,
+			wait_after_submit_sec=wait_after_submit_sec,
+			headless=headless,
+		)
+		return cls.from_url(
+			base_url,
+			auth_path=storage,
+			report_dir=report_dir,
+			target_paths=target_paths,
+			target_label=target_label,
+		)
 
 	def _write_json(self, name: str, payload: object) -> Path:
 		self.report_dir.mkdir(parents=True, exist_ok=True)
@@ -187,18 +333,53 @@ class QAPipeline:
 		return {c['name']: c['value'] for c in data.get('cookies', []) if 'name' in c and 'value' in c}
 
 	async def run(self) -> dict[str, Path]:
-		"""Run the full pipeline end-to-end inside one authenticated session."""
+		"""Run the full pipeline end-to-end inside one authenticated session.
+
+		When `target_paths` is empty, the pipeline first crawls from
+		`base_url + "/"` to discover same-origin routes (capped at
+		`max_crawl_pages` / `max_crawl_depth`) and uses every discovered
+		URL as a deep-scan seed. That makes the canonical "just point it
+		at an app" mode work without hand-maintaining a target list.
+		"""
 		outputs: dict[str, Path] = {}
 		async with AuthScanSession(self.storage_state_path, headless=True) as session:
+			# Dynamic discovery: empty target_paths -> sitemap first, then
+			# adopt the discovered URLs as scan seeds so deep-scan covers
+			# everything reachable, not just an operator-provided list.
+			discovered_paths: list[str] = []
+			if not self.target_paths:
+				logger.info('🗺️  no target_paths supplied — discovering via sitemap first')
+				smap = await sitemap.crawl_sitemap(
+					session,
+					[self.base_url.rstrip('/') + '/'],
+					base_url=self.base_url,
+					max_depth=self.max_crawl_depth,
+					max_pages=self.max_crawl_pages,
+				)
+				discovered_paths = [p['url'] for p in smap.get('pages', [])]
+				logger.info(f'🗺️  discovered {len(discovered_paths)} pages from sitemap; using them as scan seeds')
+				outputs['sitemap-pages'] = self._write_json('sitemap-pages.json', smap.get('pages', []))
+				outputs['sitemap-routes'] = self._write_json('sitemap-routes.json', smap.get('route_templates', []))
+				outputs['sitemap-apis'] = self._write_json('sitemap-apis.json', smap.get('api_endpoints', []))
+
 			logger.info('🔎 deep scan of seed pages')
-			scans = await self.scan_pages(session)
+			scans = await scan_pages_impl(
+				session,
+				discovered_paths or self._seed_urls(),
+				base_url=self.base_url,
+				hydration_sec=self.hydration_sec,
+				mobile_viewport=self.mobile_viewport,
+			)
 			outputs['qa-pages'] = self._write_json('qa-pages.json', scans)
 
-			logger.info('🗺️  sitemap crawl')
-			smap = await self.crawl_sitemap(session)
-			outputs['sitemap-pages'] = self._write_json('sitemap-pages.json', smap.get('pages', []))
-			outputs['sitemap-routes'] = self._write_json('sitemap-routes.json', smap.get('route_templates', []))
-			outputs['sitemap-apis'] = self._write_json('sitemap-apis.json', smap.get('api_endpoints', []))
+			# When target_paths WAS supplied, we still want sitemap output
+			# (discovers additional reachable routes around the seeds).
+			if self.target_paths:
+				logger.info('🗺️  sitemap crawl')
+				smap = await self.crawl_sitemap(session)
+				outputs['sitemap-pages'] = self._write_json('sitemap-pages.json', smap.get('pages', []))
+				outputs['sitemap-routes'] = self._write_json('sitemap-routes.json', smap.get('route_templates', []))
+				outputs['sitemap-apis'] = self._write_json('sitemap-apis.json', smap.get('api_endpoints', []))
 
 			logger.info('🛰️  SPA route probe')
 			spa_probe = await self.probe_spa_routes(session, scans)

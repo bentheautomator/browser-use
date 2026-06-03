@@ -104,6 +104,7 @@ browseruse = "browser_use.skill_cli.main:main"  # Alias for browser-use
 bu = "browser_use.skill_cli.main:main"  # Alias for browser-use
 browser = "browser_use.skill_cli.main:main"  # Alias for browser-use
 browser-use-tui = "browser_use.cli:main"  # Legacy TUI interface
+qa-audit = "browser_use.qa.__main__:cli"  # browser_use.qa pipeline (audit + report)
 
 [build-system]
 requires = ["hatchling"]

@@ -21,6 +21,11 @@ the `examples/qa_audit/README.md` for a usage walkthrough and example
 scripts that drive the pipeline end-to-end.
 """
 
+from browser_use.qa.auth import (
+	capture_via_form_login,
+	write_storage_from_cookies,
+	write_storage_from_localstorage,
+)
 from browser_use.qa.categories import CATEGORIES, run_audit
 from browser_use.qa.pipeline import QAPipeline
 from browser_use.qa.report import render_combined_json, render_markdown
@@ -30,6 +35,7 @@ from browser_use.qa.sitemap import crawl_sitemap, route_template_from_url
 __all__ = [
 	'CATEGORIES',
 	'QAPipeline',
+	'capture_via_form_login',
 	'crawl_sitemap',
 	'render_combined_json',
 	'render_markdown',
@@ -37,4 +43,6 @@ __all__ = [
 	'run_audit',
 	'scan_page',
 	'scan_pages',
+	'write_storage_from_cookies',
+	'write_storage_from_localstorage',
 ]

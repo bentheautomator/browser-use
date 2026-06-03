@@ -16,11 +16,25 @@ CDP listeners into a pipeline that:
   - applies a 12-category audit (UX heuristics + Nielsen 10 + WCAG 2.2 AA)
   - renders a beautiful Markdown + JSON report
 
-W1 — package scaffold. Logic in `pipeline.py` lands in W2 alongside
-`categories.py`, `sitemap.py`, `report.py`, and `_probes.py`. See
-https://github.com/bentheautomator/browser-use/issues/2 for the milestone DAG.
+W2 promoted the logic from `examples/qa_audit/` into this package. See
+the `examples/qa_audit/README.md` for a usage walkthrough and example
+scripts that drive the pipeline end-to-end.
 """
 
+from browser_use.qa.categories import CATEGORIES, run_audit
 from browser_use.qa.pipeline import QAPipeline
+from browser_use.qa.report import render_combined_json, render_markdown
+from browser_use.qa.scanner import scan_page, scan_pages
+from browser_use.qa.sitemap import crawl_sitemap, route_template_from_url
 
-__all__ = ['QAPipeline']
+__all__ = [
+	'CATEGORIES',
+	'QAPipeline',
+	'crawl_sitemap',
+	'render_combined_json',
+	'render_markdown',
+	'route_template_from_url',
+	'run_audit',
+	'scan_page',
+	'scan_pages',
+]

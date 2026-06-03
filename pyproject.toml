@@ -78,7 +78,12 @@ eval = [
     "datamodel-code-generator==0.53.0",
 ]
 cli-oci = ["browser-use[cli,oci]"]
-all = ["browser-use[cli,examples,aws,oci]"]
+qa = [
+    # browser_use.qa pipeline: link probe (HEAD requests against
+    # discovered hrefs, cookies restored from storage_state)
+    "httpx>=0.27",
+]
+all = ["browser-use[cli,examples,aws,oci,qa]"]
 
 # will prefer to use local source code checked out in ../../browser-use (if present) instead of pypi browser-use package
 # [tool.uv.sources]

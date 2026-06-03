@@ -45,6 +45,16 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+# W1 scaffold sentinel — module-level constant so each `raise
+# NotImplementedError(_W1_STUB)` line fits on one source line AND co-locates
+# the `# stub-ok:` marker on the same line as the trigger token, which is
+# what the stub-gate hook's per-line scanner requires
+# (see ~/.claude/hooks/lib/stub-patterns.sh `_stub_line_excused`). W2
+# replaces each method body with the promoted implementation from
+# examples/qa_audit/ and drops this constant.
+_W1_STUB = 'W2 wires this — see issue #2'
+
+
 @dataclass
 class QAPipeline:
 	"""Run a 12-category QA audit against an authenticated SPA.
@@ -87,30 +97,30 @@ class QAPipeline:
 	async def run(self) -> dict[str, Path]:
 		"""Run the full pipeline end-to-end. Returns a map of artifact
 		name → on-disk path."""
-		raise NotImplementedError('W2 wires this — see issue #2')  # stub-ok: W1 scaffold per owner milestone DAG, logic ships in W2
+		raise NotImplementedError(_W1_STUB)  # stub-ok: W1 scaffold per #2
 
 	async def scan_pages(self) -> list[dict]:
 		"""Deep-scan each target_path via webmap + AX + CDP listeners."""
-		raise NotImplementedError('W2 wires this — see issue #2')  # stub-ok: W1 scaffold per owner milestone DAG, logic ships in W2
+		raise NotImplementedError(_W1_STUB)  # stub-ok: W1 scaffold per #2
 
 	async def crawl_sitemap(self) -> dict:
 		"""BFS-crawl same-origin links from the target seeds. Captures
 		URLs, route templates, and XHR/fetch API inventory."""
-		raise NotImplementedError('W2 wires this — see issue #2')  # stub-ok: W1 scaffold per owner milestone DAG, logic ships in W2
+		raise NotImplementedError(_W1_STUB)  # stub-ok: W1 scaffold per #2
 
 	async def probe_links(self) -> list[dict]:
 		"""HEAD-probe every unique href found across all scanned pages."""
-		raise NotImplementedError('W2 wires this — see issue #2')  # stub-ok: W1 scaffold per owner milestone DAG, logic ships in W2
+		raise NotImplementedError(_W1_STUB)  # stub-ok: W1 scaffold per #2
 
 	async def probe_spa_routes(self) -> list[dict]:
 		"""Navigate each same-origin link in an authenticated browser to
 		catch SPA-level 404s and error boundaries that HEAD probes miss."""
-		raise NotImplementedError('W2 wires this — see issue #2')  # stub-ok: W1 scaffold per owner milestone DAG, logic ships in W2
+		raise NotImplementedError(_W1_STUB)  # stub-ok: W1 scaffold per #2
 
 	def audit(self, scans: list[dict], links: list[dict], spa: list[dict]) -> list[dict]:
 		"""Apply the 12 audit categories against the captured artifacts."""
-		raise NotImplementedError('W2 wires this — see issue #2')  # stub-ok: W1 scaffold per owner milestone DAG, logic ships in W2
+		raise NotImplementedError(_W1_STUB)  # stub-ok: W1 scaffold per #2
 
 	def render_report(self, scans: list[dict], links: list[dict], spa: list[dict], findings: list[dict]) -> tuple[Path, Path]:
 		"""Write the Markdown + JSON report. Returns (md_path, json_path)."""
-		raise NotImplementedError('W2 wires this — see issue #2')  # stub-ok: W1 scaffold per owner milestone DAG, logic ships in W2
+		raise NotImplementedError(_W1_STUB)  # stub-ok: W1 scaffold per #2

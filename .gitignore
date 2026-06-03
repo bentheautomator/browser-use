@@ -84,3 +84,7 @@ product_extraction.py
 plot.py
 
 .claude/
+.gitguard/
+
+# Codemap cache (auto-generated)
+.codemap/

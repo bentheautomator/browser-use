@@ -1,0 +1,21 @@
+# Codemap configuration for browser-use
+
+[output]
+format = "agent"
+quiet = true
+
+[analysis]
+exclude = [
+    ".venv/**",
+    "venv/**",
+    "__pycache__/**",
+    "*.egg-info/**",
+    "dist/**",
+    "build/**",
+    ".git/**",
+    ".claude/**",
+    "node_modules/**",
+]
+
+[dead_code]
+min_confidence = 70

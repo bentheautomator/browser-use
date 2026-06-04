@@ -1,0 +1,113 @@
+# Lefthook config for the browser-use fork.
+#
+# Replaces .pre-commit-config.yaml as the canonical hook orchestrator.
+# Same checks as before (yesqa, codespell, pyupgrade, ruff check, ruff
+# format, pyright + the basic file-structure checks) but driven by
+# lefthook so per-file parallelism + the gitguard-ship skip guard work.
+#
+# Install (one-time, post-clone):
+#   lefthook install
+#
+# Override skipping by jobs / hook:
+#   LEFTHOOK_EXCLUDE=pyright git commit ...
+
+pre-commit:
+  # Skip the whole stage while gitguard ship runs its own pipeline
+  # (closes the double-test/double-lint problem, claude-army#183).
+  skip:
+    - run: test -n "${GITGUARD_SHIP_IN_PROGRESS:-}"
+  parallel: true
+  jobs:
+    # ── Python formatting + linting (auto-fix + restage) ──
+    - name: ruff-check
+      glob: '*.py'
+      stage_fixed: true
+      run: uv run ruff check --fix {staged_files}
+
+    - name: ruff-format
+      glob: '*.py'
+      stage_fixed: true
+      run: uv run ruff format {staged_files}
+
+    - name: pyupgrade
+      glob: '*.py'
+      stage_fixed: true
+      run: uvx --from pyupgrade pyupgrade --py311-plus {staged_files}
+
+    - name: yesqa
+      glob: '*.py'
+      stage_fixed: true
+      run: uvx yesqa {staged_files}
+
+    # ── Spellcheck + type check (no auto-fix) ──
+    - name: codespell
+      run: uv run codespell {staged_files}
+
+    - name: pyright
+      glob: '*.py'
+      run: uv run pyright {staged_files}
+
+    # ── Lightweight file-structure checks (inline shell) ──
+    - name: check-ast
+      glob: '*.py'
+      run: uv run python -c "import ast,sys; [ast.parse(open(p).read()) for p in sys.argv[1:]]" {staged_files}
+
+    - name: check-toml
+      glob: '*.toml'
+      run: uv run python -c "import tomllib,sys; [tomllib.loads(open(p,'rb').read()) for p in sys.argv[1:]]" {staged_files}
+
+    - name: check-yaml
+      glob: '*.{yml,yaml}'
+      run: uv run python -c "import yaml,sys; [list(yaml.safe_load_all(open(p).read())) for p in sys.argv[1:]]" {staged_files}
+
+    - name: check-json
+      glob: '*.json'
+      run: |
+        for f in {staged_files}; do python -m json.tool "$f" >/dev/null || exit 1; done
+
+    - name: check-merge-conflict
+      run: |
+        if grep -lE '^(<<<<<<< |=======$|>>>>>>> )' {staged_files} 2>/dev/null; then
+          echo 'merge conflict markers detected' >&2
+          exit 1
+        fi
+
+    - name: detect-private-key
+      run: |
+        if grep -lE 'BEGIN (RSA|DSA|EC|OPENSSH|PGP|PRIVATE)' {staged_files} 2>/dev/null; then
+          echo 'private key material detected' >&2
+          exit 1
+        fi
+
+    - name: debug-statements
+      glob: '*.py'
+      run: |
+        if grep -lE '(import pdb|pdb\.set_trace|^breakpoint\()' {staged_files} 2>/dev/null; then
+          echo 'debug statements detected' >&2
+          exit 1
+        fi
+
+    - name: check-large-files
+      run: |
+        for f in {staged_files}; do
+          size=$(stat -f%z "$f" 2>/dev/null || stat -c%s "$f" 2>/dev/null || echo 0)
+          if [ "$size" -gt 614400 ]; then
+            echo "file exceeds 600KB: $f ($size bytes)" >&2
+            exit 1
+          fi
+        done
+
+    - name: forbid-submodules
+      run: |
+        if [ -f .gitmodules ]; then
+          echo 'submodules are forbidden in this repo' >&2
+          exit 1
+        fi
+
+    # end-of-file-fixer intentionally dropped — ruff format already
+    # normalizes trailing newlines on .py files; the inline shell
+    # equivalent for every other extension is fragile vs the value.
+    # Re-add as a Python script under .lefthook/ if a need surfaces.
+
+# pre-push: keep light by default; gitguard ship runs the full test/lint
+# pipeline itself. Add a pytest job here if you want pre-push test runs.
